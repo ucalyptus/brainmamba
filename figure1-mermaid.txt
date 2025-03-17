@@ -1,0 +1,37 @@
+
+graph TD
+    subgraph A[BrainMamba]
+        Brain -->|Graph Construction| BNMamba
+        Brain -->|Timeseries| BTMamba
+        BNMamba --> MutualInformation
+        BTMamba --> MutualInformation
+    end
+
+    subgraph B[BNMamba]
+        Nodes --> Selection
+        Selection --> Readout
+        Nodes --> Mamba
+        Mamba --> Readout
+    end
+
+    subgraph C[BTMamba]
+        CrossVariateMLP --> T1
+        CrossVariateMLP --> T2
+        T1 --> SSM1
+        T2 --> SSM2
+        SSM1 --> Output1
+        SSM2 --> Output2
+    end
+
+    subgraph D[Bidirectional Mamba Readout]
+        Linear1 --> Activation1
+        Linear2 --> Activation2
+        Linear3 --> Activation3
+        Activation1 --> Multiply1
+        Activation2 --> Multiply2
+        Activation3 --> Multiply3
+        Multiply1 --> Sum1
+        Multiply2 --> Sum1
+        Multiply3 --> Sum1
+        Sum1 --> Output
+    end

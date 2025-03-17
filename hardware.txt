@@ -1,0 +1,1 @@
+we have 8 H100 HBM3 GPUs of 80GB approx vRAM. Aim to do single device training and inference if possible.

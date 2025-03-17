@@ -1,0 +1,46 @@
+# Environment directories
+*env/
+brainmamba_env/
+venv/
+ENV/
+.env
+.venv
+
+# Python distribution / packaging
+*.egg-info/
+*.egg
+dist/
+build/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Data directories
+data/
+results/
+logs/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Model checkpoints
+*.pth
+*.pt
+*.ckpt
+
+# Jupyter notebooks
+.ipynb_checkpoints 
