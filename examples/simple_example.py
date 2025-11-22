@@ -14,7 +14,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from brainmamba.models import BrainMamba, BrainMambaForClassification
+from brainmamba.models import BrainMamba
 
 
 def generate_toy_data(batch_size=32, num_nodes=10, seq_len=100, num_classes=2):
@@ -111,11 +111,14 @@ def main():
     
     # Create BrainMamba model
     print("Creating BrainMamba model...")
-    model = BrainMambaForClassification(
+    # Note: BrainMambaForClassification was merged into BrainMamba or similar
+    # Assuming BrainMamba handles classification directly as per code
+    model = BrainMamba(
         d_model=32,
         d_state=32,
-        n_layers=2,
+        n_ts_layers=2, # Updated param name
         n_mpnn_layers=2,
+        n_ssm_layers=2, # Updated param name
         num_classes=num_classes,
         dropout=0.1
     )
@@ -165,13 +168,13 @@ def main():
         _, test_predicted = torch.max(test_logits, 1)
         
         # Compute accuracy
-        test_acc = accuracy_score(test_labels.numpy(), test_predicted.numpy())
+        test_acc = accuracy_score(test_labels.cpu().float().numpy(), test_predicted.cpu().float().numpy())
         print(f"Test Accuracy: {test_acc:.4f}")
         
         # Compute PR-AUC for binary classification
         if num_classes == 2:
             precision, recall, _ = precision_recall_curve(
-                test_labels.numpy(), test_probs[:, 1].numpy()
+                test_labels.cpu().float().numpy(), test_probs[:, 1].cpu().float().numpy()
             )
             pr_auc = auc(recall, precision)
             print(f"PR-AUC: {pr_auc:.4f}")
@@ -181,7 +184,7 @@ def main():
     
     # Plot timeseries
     plt.subplot(2, 1, 1)
-    plt.imshow(timeseries[0].numpy(), aspect='auto', cmap='viridis')
+    plt.imshow(timeseries[0].float().numpy(), aspect='auto', cmap='viridis')
     plt.colorbar(label='Amplitude')
     plt.title(f'Timeseries (Class {labels[0].item()})')
     plt.xlabel('Time')
@@ -189,7 +192,7 @@ def main():
     
     # Plot adjacency matrix
     plt.subplot(2, 1, 2)
-    plt.imshow(adj_matrix[0].numpy(), cmap='Blues')
+    plt.imshow(adj_matrix[0].float().numpy(), cmap='Blues')
     plt.colorbar(label='Connection Strength')
     plt.title(f'Adjacency Matrix (Class {labels[0].item()})')
     plt.xlabel('Brain Unit')
@@ -201,4 +204,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()

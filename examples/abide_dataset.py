@@ -19,20 +19,13 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader, random_split
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
 import requests
-import nibabel as nib
-from nilearn import datasets, input_data, connectome
 from tqdm import tqdm
-import zipfile
 import argparse
-from typing import Tuple, Dict, List, Any, Optional
-import io
+from typing import Tuple, List
 
 # Add parent directory to path to import BrainMamba modules
 sys.path.append('..')
-from brainmamba.utils.connectivity import construct_functional_connectivity, get_functional_systems
 
 # URLs for ABIDE data from NITRC
 ABIDE_NITRC_BASE_URL = "https://fcp-indi.s3.amazonaws.com/data/Projects/ABIDE_Initiative"

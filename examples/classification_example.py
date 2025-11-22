@@ -7,7 +7,6 @@ It includes data loading, preprocessing, model training, and evaluation.
 Optimized for H100 GPUs with mixed precision training.
 """
 
-import os
 import argparse
 import numpy as np
 import torch
@@ -21,7 +20,6 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 import sys
 sys.path.append('..')
 from brainmamba.models.brainmamba import BrainMamba
-from brainmamba.utils.connectivity import construct_functional_connectivity, get_functional_systems
 
 
 def parse_args():
@@ -386,7 +384,7 @@ def evaluate_model(model, test_loader, args):
     test_f1 = f1_score(all_labels, all_preds, average='macro')
     
     # Print results
-    print(f"Test Results:")
+    print("Test Results:")
     print(f"Accuracy: {test_acc:.4f}")
     print(f"Precision: {test_precision:.4f}")
     print(f"Recall: {test_recall:.4f}")
