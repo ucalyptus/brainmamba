@@ -111,16 +111,17 @@ def main():
     
     # Create BrainMamba model
     print("Creating BrainMamba model...")
-    # Note: BrainMambaForClassification was merged into BrainMamba or similar
-    # Assuming BrainMamba handles classification directly as per code
+    # Note: BrainMambaForClassification was removed; BrainMamba now handles classification directly
     model = BrainMamba(
         d_model=32,
         d_state=32,
-        n_ts_layers=2, # Updated param name
+        n_ts_layers=2,
         n_mpnn_layers=2,
-        n_ssm_layers=2, # Updated param name
+        n_ssm_layers=2,
         num_classes=num_classes,
-        dropout=0.1
+        dropout=0.1,
+        input_dim=num_nodes,
+        seq_len=seq_len
     )
     
     # Define optimizer

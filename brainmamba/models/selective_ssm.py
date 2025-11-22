@@ -7,7 +7,7 @@ Optimized for H100 GPUs with parallel scan implementation.
 """
 
 import math
-from typing import Callable, Optional
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -122,7 +122,8 @@ class SelectiveSSM(nn.Module):
         # Compute this carefully to avoid numerical issues
         # First term: (exp(A*dt) - 1) / A
         # shape (d_model, d_state)
-        A_inv = 1.0 / rearrange(A, "n -> 1 n")
+        # Add epsilon to avoid division by zero
+        A_inv = 1.0 / (rearrange(A, "n -> 1 n") + 1e-8)
         decay_term = (A_bar - 1.0) * A_inv
         
         # Multiply by B

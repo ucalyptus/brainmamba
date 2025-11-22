@@ -212,6 +212,8 @@ class BrainMamba(nn.Module):
         fc_threshold: float = 0.5,
         use_parallel_scan: bool = True,
         use_mixed_precision: bool = True,
+        input_dim: Optional[int] = None,
+        seq_len: Optional[int] = None,
     ):
         """
         Initialize the BrainMamba.
@@ -227,6 +229,9 @@ class BrainMamba(nn.Module):
             fc_threshold: Threshold for functional connectivity construction
             use_parallel_scan: Whether to use parallel scan for faster computation
             use_mixed_precision: Whether to use mixed precision training
+            input_dim: Optional input dimension (number of nodes/variates) for projection initialization.
+                       Required if number of nodes != d_model.
+            seq_len: Optional sequence length of timeseries. Required if seq_len != d_model.
         """
         super().__init__()
 
@@ -242,6 +247,8 @@ class BrainMamba(nn.Module):
             n_layers=n_ts_layers,
             dropout=dropout,
             use_parallel_scan=use_parallel_scan,
+            input_dim=input_dim,
+            seq_len=seq_len,
         )
 
         # BNMamba for network encoding
@@ -332,7 +339,7 @@ class BrainMamba(nn.Module):
             return logits
 
     def pretraining_step(
-        self, timeseries: Tensor, optimizer: torch.optim.Optimizer, scaler: Optional[torch.cuda.amp.GradScaler] = None
+        self, timeseries: Tensor, optimizer: torch.optim.Optimizer, scaler: Optional[object] = None
     ) -> float:
         """
         Perform a pretraining step using mutual information loss.
@@ -371,7 +378,7 @@ class BrainMamba(nn.Module):
         timeseries: Tensor,
         labels: Tensor,
         optimizer: torch.optim.Optimizer,
-        scaler: Optional[torch.cuda.amp.GradScaler] = None,
+        scaler: Optional[object] = None,
     ) -> float:
         """
         Perform a training step for downstream tasks.

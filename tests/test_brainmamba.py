@@ -14,7 +14,9 @@ def test_brainmamba_forward():
         num_classes=num_classes,
         n_ts_layers=1,
         n_mpnn_layers=1,
-        n_ssm_layers=1
+        n_ssm_layers=1,
+        input_dim=num_nodes,
+        seq_len=seq_len
     )
 
     timeseries = torch.randn(batch_size, num_nodes, seq_len)
@@ -35,7 +37,7 @@ def test_brainmamba_inference():
     seq_len = 16
     d_model = 8
 
-    model = BrainMamba(d_model=d_model)
+    model = BrainMamba(d_model=d_model, input_dim=num_nodes, seq_len=seq_len)
     timeseries = torch.randn(batch_size, num_nodes, seq_len)
 
     preds, probs = model.inference(timeseries)

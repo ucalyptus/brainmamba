@@ -21,7 +21,8 @@ def test_variate_encoder_shape():
     d_model = 8
 
     # seq_len != d_model, should trigger projection logic
-    model = VariateEncoder(d_model=d_model, n_layers=1)
+    # Must provide input_dim (which corresponds to seq_len for VariateEncoder projection)
+    model = VariateEncoder(d_model=d_model, n_layers=1, input_dim=seq_len)
     x = torch.randn(batch_size, num_variates, seq_len)
 
     y = model(x)
@@ -33,7 +34,8 @@ def test_btmamba_full():
     seq_len = 16
     d_model = 8
 
-    model = BTMamba(d_model=d_model, n_layers=1)
+    # Must provide input_dim (num_variates) and seq_len if they differ from d_model
+    model = BTMamba(d_model=d_model, n_layers=1, input_dim=num_variates, seq_len=seq_len)
     x = torch.randn(batch_size, num_variates, seq_len)
 
     # Test with node encodings return

@@ -151,13 +151,17 @@ class VariateEncoder(nn.Module):
         if seq_len != self.d_model:
              # We need to project seq_len -> d_model.
              if self.input_proj is None:
-                 # WARNING: Creating layer dynamically. Parameters won't be learned if optimizer is already initialized.
-                 self.input_proj = nn.Linear(seq_len, self.d_model).to(x.device)
+                 raise RuntimeError(
+                     f"Input sequence length ({seq_len}) does not match d_model ({self.d_model}) "
+                     "and input_dim was not provided at initialization. "
+                     "Please provide input_dim to VariateEncoder __init__ to create the projection layer."
+                 )
 
              # Check if input size matches
              if self.input_proj.in_features != seq_len:
-                  # Re-initialize if size changed (not ideal for training but avoids crash)
-                  self.input_proj = nn.Linear(seq_len, self.d_model).to(x.device)
+                  raise RuntimeError(
+                      f"Input sequence length ({seq_len}) does not match initialized projection layer ({self.input_proj.in_features})."
+                  )
 
              x_reshaped = self.input_proj(x_reshaped.squeeze(1)).unsqueeze(1)
         
@@ -287,6 +291,7 @@ class BTMamba(nn.Module):
         dropout: float = 0.0,
         use_parallel_scan: bool = True,
         input_dim: Optional[int] = None,
+        seq_len: Optional[int] = None,
     ):
         """
         Initialize the BTMamba.
@@ -298,6 +303,7 @@ class BTMamba(nn.Module):
             dropout: Dropout rate
             use_parallel_scan: Whether to use parallel scan for faster computation
             input_dim: Optional input dimension (number of variates) for projection initialization
+            seq_len: Optional sequence length of timeseries for VariateEncoder projection initialization
         """
         super().__init__()
 
@@ -322,6 +328,7 @@ class BTMamba(nn.Module):
             n_layers=n_layers,
             dropout=dropout,
             use_parallel_scan=use_parallel_scan,
+            input_dim=seq_len,
         )
 
         # Bidirectional Readout for brain-level encoding
@@ -354,14 +361,17 @@ class BTMamba(nn.Module):
         # We need to ensure num_variates matches d_model for CrossVariateMLP
         if num_variates != self.d_model:
              # If self.input_proj is missing or incorrect size, create it
-             # WARNING: If this layer is created during forward pass, its parameters
-             # might not be included in the optimizer if the optimizer was already initialized.
-             # Ideally, pass input_dim to __init__.
              if self.input_proj is None:
-                  self.input_proj = nn.Linear(num_variates, self.d_model).to(x.device)
+                  raise RuntimeError(
+                      f"Input num_variates ({num_variates}) does not match d_model ({self.d_model}) "
+                      "and input_dim was not provided at initialization. "
+                      "Please provide input_dim to BTMamba __init__ to create the projection layer."
+                  )
 
              if self.input_proj.in_features != num_variates:
-                  self.input_proj = nn.Linear(num_variates, self.d_model).to(x.device)
+                  raise RuntimeError(
+                      f"Input num_variates ({num_variates}) does not match initialized projection layer ({self.input_proj.in_features})."
+                  )
 
              # Project num_variates -> d_model
              # x is (B, V, L) -> transpose to (B, L, V) -> project -> (B, L, D) -> transpose back to (B, D, L)
