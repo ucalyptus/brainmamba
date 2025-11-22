@@ -467,7 +467,7 @@ def evaluate_model(model, test_loader, args):
     cm = confusion_matrix(all_labels, all_preds)
     
     # Print results
-    print(f"Test Results:")
+    print("Test Results:")
     print(f"Accuracy: {test_acc:.4f}")
     print(f"Precision: {test_precision:.4f}")
     print(f"Recall: {test_recall:.4f}")
