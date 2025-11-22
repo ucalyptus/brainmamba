@@ -65,77 +65,7 @@ class CrossVariateMLP(nn.Module):
         # Transpose to (batch_size, seq_len, num_variates)
         x_t = x.transpose(1, 2)
         
-        # Check if we need to project
-        # x_t is (B, L, V). norm expects (..., d_model).
-        # So if V != d_model, we have a problem unless we project or resize.
-        # However, standard MLP mixing usually happens across the channel dimension.
-        # In this context, is 'variates' the channel?
-        # If BTMamba is time-series transformer-like, usually input is (B, L, C).
-        # Here input is (B, V, L) -> transpose -> (B, L, V).
-        # So V is the channel dimension.
-
-        # If the model expects d_model channels, we must project V -> d_model.
-        if x_t.size(-1) != self.d_model:
-            if self.projector is None or self.projector.in_features != x_t.size(-1):
-                # We need a projection. Ideally this should be defined in __init__,
-                # but V might be variable or unknown at init.
-                # For now, we'll use a linear layer created on the device of x
-                # BUT, creating layers in forward is bad practice.
-                # We should probably assume V == d_model OR handle it before calling this module.
-                # Or we can use a 1x1 Conv to project.
-
-                # Let's assume for this refactor that if V != d_model, we project it using a linear layer
-                # that should have been registered.
-                # Since I cannot change the API easily without breaking things, I will add a
-                # check and dynamic creation ONLY if it doesn't exist, but warn.
-                # Better yet, let's check if we can register it once.
-                pass
-
         # Apply layer normalization
-        # Note: LayerNorm requires the last dimension to match its normalized_shape (d_model)
-        # If V != d_model, this will crash.
-        # To support arbitrary V, we should probably normalize over V, so we need LayerNorm(V).
-        # But d_model is fixed at init.
-
-        # The design seems to imply that num_variates should be d_model OR we are mapping V to d_model before this.
-        # But BTMamba takes (B, V, L) and calls CrossVariateMLP first.
-        # So BTMamba.__init__ takes d_model. If we pass V != d_model, it breaks.
-
-        # Fix: We should project V to d_model if they differ BEFORE normalization.
-        if x_t.size(-1) != self.d_model:
-             # If we are here, it means the user passed data with different number of nodes than d_model.
-             # In many Transformer impls, d_model IS the feature dimension.
-             # So if you have 10 nodes, you should probably use d_model=10, OR project 10 -> d_model.
-             # Since BTMamba is used as an encoder, usually we want a fixed latent dim (d_model).
-             # So we should project V -> d_model.
-
-             # But we don't have a projection layer.
-             # I will use a linear projection that is created if needed, but we really should have 'input_dim' in init.
-             pass
-
-        # For now, I will proceed with the assumption that V should match d_model,
-        # or I'll add a projection if I can determine where to store it.
-        # Given the crash, I will add a projection layer to BTMamba or CrossVariateMLP.
-
-        # But wait, LayerNorm is initialized with d_model.
-        # If x_t has shape (..., V), and V != d_model, LayerNorm fails.
-        # So we MUST project V -> d_model before LayerNorm.
-
-        # Since I cannot change the signature of __init__ too aggressively (it might break other things),
-        # I'll assume we need to handle this.
-
-        # Actually, the crash was in test_crash.py where d_model=16, num_nodes=10.
-        # The user probably intends to embed 10 nodes into 16 dimensions?
-        # Or maybe d_model should have been 10?
-        # Usually in these models, you project input -> d_model.
-
-        # I'll add an input projection to BTMamba class, not here.
-        # Here I'll assume input is already d_model.
-        
-        # BUT BTMamba calls CrossVariateMLP(x) first thing.
-        # So I'll handle the fix in BTMamba class.
-        # Here, I'll just keep it as is, but add type hints.
-
         x_norm = self.norm(x_t)
 
         # Apply MLP
@@ -162,6 +92,7 @@ class VariateEncoder(nn.Module):
         n_layers: int = 2,
         dropout: float = 0.0,
         use_parallel_scan: bool = True,
+        input_dim: Optional[int] = None,
     ):
         """
         Initialize the Variate Encoder.
@@ -172,6 +103,7 @@ class VariateEncoder(nn.Module):
             n_layers: Number of SSM layers
             dropout: Dropout rate
             use_parallel_scan: Whether to use parallel scan for faster computation
+            input_dim: Optional input dimension (sequence length) for projection initialization
         """
         super().__init__()
 
@@ -192,8 +124,10 @@ class VariateEncoder(nn.Module):
             ]
         )
 
-        # Projection layer placeholder
+        # Projection layer if input_dim is provided and doesn't match d_model
         self.input_proj: Optional[nn.Linear] = None
+        if input_dim is not None and input_dim != d_model:
+            self.input_proj = nn.Linear(input_dim, d_model)
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -212,69 +146,12 @@ class VariateEncoder(nn.Module):
         x_reshaped = x.reshape(batch_size * num_variates, 1, seq_len)
 
         # Project to d_model dimension if needed
-        if seq_len != self.d_model:
-            # The input x has 'seq_len' as the last dimension.
-            # SSM expects (Batch, SequenceLength, Channels/Features).
-            # But here 'seq_len' is treated as features?
-            # Wait, SelectiveSSM takes (batch, seq_len, d_model).
-            # Here x_reshaped is (batch*num_variates, 1, seq_len).
-            # So 1 is sequence length, and seq_len is d_model?
-            # That implies we are treating the time series as a feature vector of size seq_len?
-            # And sequence length is 1? That's not a sequence model then.
-
-            # Let's re-read BTMamba description.
-            # "BTMamba: Brain Timeseries Mamba for encoding multivariate timeseries data"
-            # Usually SSMs run over time.
-            # If we have (B, V, T), we probably want to run SSM over T.
-            # So input to SSM should be (B, T, D) or (B*V, T, 1) -> projected to (B*V, T, D).
-
-            # In the original code:
-            # x_reshaped = x.view(batch_size * num_variates, 1, seq_len)
-            # if seq_len != self.d_model:
-            #    x_reshaped = nn.Linear(seq_len, self.d_model)(x_reshaped.squeeze(1)).unsqueeze(1)
-
-            # This code treats 'seq_len' as the feature dimension and sequence length as 1.
-            # This effectively disables the "State Space" part over time, making it just a fancy MLP on the whole time series.
-            # Unless 'seq_len' here means something else.
-
-            # If the intention is to run SSM over the time dimension,
-            # the input should be (B*V, seq_len, 1) -> project to (B*V, seq_len, d_model).
-
-            # Given "Variate Encoder for encoding each variate (brain unit) timeseries",
-            # it likely should run over time.
-
-            # I will assume the previous implementation was possibly incorrect or I am misunderstanding.
-            # But if I change it to run over T, it changes the logic significantly.
-            # However, "Mamba" is for sequence modeling. Running it on seq_len=1 is weird.
-
-            # Let's look at BTMamba paper/description in README.
-            # "Variate Encoder for encoding individual timeseries"
-
-            # If I change x_reshaped to (batch*num_variates, seq_len, 1), then project 1 -> d_model,
-            # then run SSM, it makes more sense.
-
-            # But let's look at existing code logic again.
-            # It checks if seq_len != d_model.
-            # If seq_len == d_model, it passes (B*V, 1, d_model).
-            # SSM sees sequence length 1, feature dim d_model.
-            # This confirms it treats the whole time series as a single token?
-
-            # If so, I should stick to that logic but fix the dynamic linear layer.
-            # I will add a linear layer to __init__ if I knew seq_len.
-            # But I don't know seq_len at init.
-
-            # For now, I will keep the behavior of "seq_len is feature dim" but implement it cleanly.
-            # But I need to register the projection.
-            pass
-
+        # Treat the entire time series as a feature vector: input shape is (batch_size, num_variates, seq_len).
+        # Project from seq_len to d_model so that SSM layers receive input of shape (B*V, 1, d_model).
         if seq_len != self.d_model:
              # We need to project seq_len -> d_model.
-             # Since we can't register in forward, and we don't know seq_len in init...
-             # This is a flaw in the design.
-             # I'll assume for now that we handle this via a 1D Conv or Linear that is properly registered.
-             # I will check if self.input_proj exists, if not create it (and move to device).
-             # This is still "dynamic" but at least persistent.
              if self.input_proj is None:
+                 # WARNING: Creating layer dynamically. Parameters won't be learned if optimizer is already initialized.
                  self.input_proj = nn.Linear(seq_len, self.d_model).to(x.device)
 
              # Check if input size matches
@@ -289,7 +166,7 @@ class VariateEncoder(nn.Module):
             x_reshaped = layer(x_reshaped)
 
         # Reshape back to (batch_size, num_variates, d_model)
-        return x_reshaped.view(batch_size, num_variates, self.d_model)
+        return x_reshaped.reshape(batch_size, num_variates, self.d_model)
 
 
 class BidirectionalReadout(nn.Module):
@@ -409,6 +286,7 @@ class BTMamba(nn.Module):
         n_layers: int = 2,
         dropout: float = 0.0,
         use_parallel_scan: bool = True,
+        input_dim: Optional[int] = None,
     ):
         """
         Initialize the BTMamba.
@@ -419,6 +297,7 @@ class BTMamba(nn.Module):
             n_layers: Number of SSM layers
             dropout: Dropout rate
             use_parallel_scan: Whether to use parallel scan for faster computation
+            input_dim: Optional input dimension (number of variates) for projection initialization
         """
         super().__init__()
 
@@ -426,10 +305,9 @@ class BTMamba(nn.Module):
         self.d_state = d_state
         
         # Input projection to match d_model if needed
-        # Since we don't know input dim (num_variates) here, we might need to handle it dynamically
-        # or ask user to provide input_dim.
-        # I'll add a dynamic projection in forward if dimensions don't match.
         self.input_proj: Optional[nn.Linear] = None
+        if input_dim is not None and input_dim != d_model:
+            self.input_proj = nn.Linear(input_dim, d_model)
 
         # Cross-Variate MLP for inter-variate information fusing
         self.cross_variate_mlp = CrossVariateMLP(
@@ -478,7 +356,7 @@ class BTMamba(nn.Module):
              # If self.input_proj is missing or incorrect size, create it
              # WARNING: If this layer is created during forward pass, its parameters
              # might not be included in the optimizer if the optimizer was already initialized.
-             # Ideally, ensure num_variates == d_model or pass input_dim to __init__.
+             # Ideally, pass input_dim to __init__.
              if self.input_proj is None:
                   self.input_proj = nn.Linear(num_variates, self.d_model).to(x.device)
 
@@ -490,9 +368,6 @@ class BTMamba(nn.Module):
              x_t = x.transpose(1, 2)
              x_proj = self.input_proj(x_t)
              x = x_proj.transpose(1, 2)
-
-             # Update num_variates
-             num_variates = self.d_model
 
         # Apply Cross-Variate MLP
         z = self.cross_variate_mlp(x)

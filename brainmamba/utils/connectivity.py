@@ -47,16 +47,8 @@ def construct_functional_connectivity(
         adj_matrix: Adjacency matrix of shape (batch_size, num_nodes, num_nodes)
     """
     batch_size, num_nodes, seq_len = timeseries.shape
-    adj_matrix = torch.zeros(batch_size, num_nodes, num_nodes, device=timeseries.device)
-
-    # Vectorized implementation would be better here, but sticking to logic for now.
-    # To vectorize:
-    # timeseries_centered = timeseries - timeseries.mean(dim=-1, keepdim=True)
-    # cov = torch.bmm(timeseries_centered, timeseries_centered.transpose(1, 2))
-    # std = torch.sqrt((timeseries_centered**2).sum(dim=-1, keepdim=True))
-    # corr = cov / (torch.bmm(std, std.transpose(1, 2)) + 1e-8)
     
-    # Let's implement the vectorized version for speed as part of "make it better"
+    # Vectorized implementation
 
     timeseries_mean = timeseries.mean(dim=-1, keepdim=True)
     timeseries_centered = timeseries - timeseries_mean
@@ -81,9 +73,7 @@ def construct_functional_connectivity(
     mask = corr_matrix > threshold
     adj_matrix = corr_matrix * mask.float()
 
-    # Zero out diagonal (self-loops usually not useful for MPNN if we handle self separately,
-    # but here we might want them. The original code loop started j=i+1, so diagonal was 0)
-    # Let's match original behavior: diagonal is 0.
+    # Zero out diagonal
     identity_mask = torch.eye(num_nodes, device=timeseries.device).unsqueeze(0).expand(batch_size, -1, -1)
     adj_matrix = adj_matrix * (1 - identity_mask)
     

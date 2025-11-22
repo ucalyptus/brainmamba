@@ -354,9 +354,6 @@ class BrainMamba(nn.Module):
         if self.use_mixed_precision and scaler is not None and device_type == "cuda":
             with torch.amp.autocast(device_type=device_type):
                 _, mi_loss = self.forward(timeseries, return_mi_loss=True)
-                # Ensure mi_loss is Tensor
-                if isinstance(mi_loss, tuple):
-                    mi_loss = mi_loss[1]
 
             # Backward pass with gradient scaling
             scaler.scale(mi_loss).backward()
@@ -364,9 +361,6 @@ class BrainMamba(nn.Module):
             scaler.update()
         else:
             _, mi_loss = self.forward(timeseries, return_mi_loss=True)
-            # Ensure mi_loss is Tensor
-            if isinstance(mi_loss, tuple):
-                mi_loss = mi_loss[1]
             mi_loss.backward()
             optimizer.step()
 
@@ -400,8 +394,6 @@ class BrainMamba(nn.Module):
         if self.use_mixed_precision and scaler is not None and device_type == "cuda":
             with torch.amp.autocast(device_type=device_type):
                 logits = self.forward(timeseries)
-                if isinstance(logits, tuple):
-                     logits = logits[0]
                 loss = F.cross_entropy(logits, labels)
 
             # Backward pass with gradient scaling
@@ -410,8 +402,6 @@ class BrainMamba(nn.Module):
             scaler.update()
         else:
             logits = self.forward(timeseries)
-            if isinstance(logits, tuple):
-                    logits = logits[0]
             loss = F.cross_entropy(logits, labels)
             loss.backward()
             optimizer.step()
@@ -439,12 +429,8 @@ class BrainMamba(nn.Module):
             if self.use_mixed_precision:
                 with torch.amp.autocast(device_type=device_type):
                     logits = self.forward(timeseries)
-                    if isinstance(logits, tuple):
-                        logits = logits[0]
             else:
                 logits = self.forward(timeseries)
-                if isinstance(logits, tuple):
-                        logits = logits[0]
 
             # Compute probabilities and predictions
             probabilities = F.softmax(logits, dim=-1)

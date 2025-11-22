@@ -168,13 +168,13 @@ def main():
         _, test_predicted = torch.max(test_logits, 1)
         
         # Compute accuracy
-        test_acc = accuracy_score(test_labels.cpu().float().numpy(), test_predicted.cpu().float().numpy())
+        test_acc = accuracy_score(test_labels.cpu().numpy(), test_predicted.cpu().numpy())
         print(f"Test Accuracy: {test_acc:.4f}")
         
         # Compute PR-AUC for binary classification
         if num_classes == 2:
             precision, recall, _ = precision_recall_curve(
-                test_labels.cpu().float().numpy(), test_probs[:, 1].cpu().float().numpy()
+                test_labels.cpu().numpy(), test_probs[:, 1].cpu().float().numpy()
             )
             pr_auc = auc(recall, precision)
             print(f"PR-AUC: {pr_auc:.4f}")

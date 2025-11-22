@@ -16,74 +16,13 @@ from einops import rearrange
 from torch import Tensor
 
 
-def parallel_scan_ref(f: Callable[[Tensor, Tensor], Tensor], x: Tensor, init: Tensor) -> Tensor:
-    """
-    Parallel scan implementation (Blelloch 1990).
-
-    This is a reference implementation that will be used if CUDA is not available.
-
-    Args:
-        f: Binary associative function
-        x: Input tensor of shape (batch_size, seq_len, ...)
-        init: Initial state
-
-    Returns:
-        Output tensor of shape (batch_size, seq_len, ...)
-    """
-    batch_size, seq_len, *rest = x.shape
-
-    # Handle trivial case
-    if seq_len == 1:
-        return f(init.unsqueeze(1), x)
-
-    # Up-sweep (reduce) phase
-    h = x.clone()
-    for d in range(math.ceil(math.log2(seq_len))):
-        mask = (torch.arange(seq_len, device=x.device) % (2 * 2**d)) == (2**d - 1)
-        mask = mask.view(1, seq_len, *([1] * len(rest)))
-
-        h_shifted = torch.zeros_like(h)
-        h_shifted[:, 2**d :] = h[:, : -2**d]
-        h = torch.where(mask, f(h_shifted, h), h) # Note: f(a, b) -> a + b or a * b. Order matters for non-commutative.
-
-    # Down-sweep phase
-    g = torch.zeros_like(x)
-    g[:, -1] = h[:, -1]
-    for d in range(math.ceil(math.log2(seq_len)) - 1, -1, -1):
-        mask = (torch.arange(seq_len, device=x.device) % (2 * 2**d)) == (2**d - 1)
-        mask = mask.view(1, seq_len, *([1] * len(rest)))
-
-        g_shifted = torch.zeros_like(g)
-        g_shifted[:, 2**d :] = g[:, : -2**d]
-
-        g = torch.where(mask, g_shifted, g)
-
-        mask = (torch.arange(seq_len, device=x.device) % (2 * 2**d)) == (2 * 2**d - 1)
-        mask = mask.view(1, seq_len, *([1] * len(rest)))
-
-        g = torch.where(mask, f(g, h), g) # Warning: This reference implementation might be buggy for general f.
-        # But for linear recurrence h_t = A*h_{t-1} + u_t, we usually use a specific scan.
-        # Mamba's scan is h_t = A_t * h_{t-1} + u_t.
-        # This is a linear recurrence.
-        
-    # Combine with initial state
-    # If f is addition: init + g.
-    # But for Mamba, it is more complex.
-    # We will use a simpler sequential scan for reference if not optimizing.
-
-    # Since we are refactoring, let's use a sequential scan for correctness if parallel is not working perfectly.
-    # The current parallel_scan_ref looks like prefix-sum.
-    
-    return g
-
-
 class SelectiveSSM(nn.Module):
     """
     Selective State Space Model (Mamba) implementation.
 
     This is the core component of the BrainMamba architecture, implementing
     the selective scan operation with input-dependent parameters.
-    Optimized for H100 GPUs with parallel scan implementation.
+    Optimized for H100 GPUs.
     """
 
     def __init__(
@@ -96,7 +35,7 @@ class SelectiveSSM(nn.Module):
         dt_init: str = "random",
         dt_scale: float = 1.0,
         dt_init_floor: float = 1e-4,
-        use_parallel_scan: bool = True,
+        use_parallel_scan: bool = True,  # Retained for API compatibility but currently unused
     ):
         """
         Initialize the Selective SSM.
@@ -110,14 +49,13 @@ class SelectiveSSM(nn.Module):
             dt_init: Initialization method for the step size ("random" or "constant")
             dt_scale: Scaling factor for the step size
             dt_init_floor: Minimum value for random initialization
-            use_parallel_scan: Whether to use parallel scan for faster computation
+            use_parallel_scan: Whether to use parallel scan for faster computation (Not implemented)
         """
         super().__init__()
 
         self.d_model = d_model
         self.d_state = d_state
         self.dropout = dropout
-        self.use_parallel_scan = use_parallel_scan
 
         # Initialize A, B, C parameters
         # A is initialized to a negative value to ensure stability
@@ -182,11 +120,6 @@ class SelectiveSSM(nn.Module):
 
         # B_bar = (exp(A * dt) - I) / A * B
         # Compute this carefully to avoid numerical issues
-        # When A is close to 0, we use the first-order approximation: B_bar ≈ dt * B
-        # But A is usually negative and not zero.
-        # B_bar[d, n] = B[d, n] * (exp(A[n]*dt[d]) - 1) / A[n]
-        # Output shape: (d_model, d_state)
-
         # First term: (exp(A*dt) - 1) / A
         # shape (d_model, d_state)
         A_inv = 1.0 / rearrange(A, "n -> 1 n")
@@ -202,18 +135,7 @@ class SelectiveSSM(nn.Module):
         # u_B = u * B_bar (broadcast)
         # We want u_B[b, l, d, n] = u[b, l, d] * B_bar[d, n]
         u_B = torch.einsum("bld,dn->bldn", u, B_bar) # (B, L, D, N)
-
-        # Scan state
-        # h shape: (B, D, N)
         
-        if self.use_parallel_scan and seq_len > 1 and torch.cuda.is_available():
-             # Placeholder for real parallel scan which requires custom kernel or complex impl
-             # Falling back to sequential for correctness in this refactor unless we import a library
-             # (e.g. selective_scan_cuda).
-             # Since we want "better" code, correctness is priority.
-             # I will use the sequential implementation but ensure it is correct.
-             pass
-
         # Sequential Scan
         # Initialize hidden state
         h = torch.zeros(batch_size, self.d_model, self.d_state, device=u.device) # (B, D, N)
@@ -242,28 +164,6 @@ class SelectiveSSM(nn.Module):
         y = self.dropout_layer(y)
 
         return y
-
-    def _parallel_scan(
-        self, f: Callable[[Tensor, Tensor], Tensor], x: Tensor, init: Tensor
-    ) -> Tensor:
-        """
-        Parallel scan implementation using PyTorch's built-in operations.
-
-        This is optimized for H100 GPUs by using tensor cores and avoiding
-        explicit loops where possible.
-
-        Args:
-            f: Binary associative function
-            x: Input tensor of shape (batch_size, seq_len, ...)
-            init: Initial state
-
-        Returns:
-            Output tensor of shape (batch_size, seq_len, ...)
-        """
-        # For now, use the reference implementation
-        # In a production environment, this would be replaced with a CUDA kernel
-        # or a more optimized implementation using PyTorch's built-in operations
-        return parallel_scan_ref(f, x, init)
 
 
 class SelectiveSSMBlock(nn.Module):
